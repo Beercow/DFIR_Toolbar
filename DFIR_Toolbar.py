@@ -1,8 +1,9 @@
 import importlib
+import json
+import logging
 import os
 import threading
 import time
-import logging
 import sys
 from ctypes import Structure, byref, c_uint, sizeof, windll
 from ctypes.wintypes import HWND, RECT, UINT
@@ -14,23 +15,15 @@ import pygetwindow as gw
 from pystray import Icon, MenuItem, Menu as TrayMenu  # Alias pystray.Menu
 from screeninfo import get_monitors
 
-import menu_config  # Menu configuration file
-
 __author__ = "Brian Maloney"
-__version__ = "2025.01.02"
+__version__ = "2025.01.03"
 __email__ = "bmmaloney97@gmail.com"
 
-# Define constants for AppBar
-ABM_NEW = 0x00000000
-ABM_REMOVE = 0x00000001
-ABM_SETPOS = 0x00000003
-ABE_TOP = 1
-
 if getattr(sys, 'frozen', False):
-    application_path = sys._MEIPASS
+    application_path = os.path.dirname(sys.executable)
 else:
     application_path = os.path.dirname(os.path.abspath(__file__))
-print(application_path + '/app.log')
+
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s, %(levelname)s, %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -40,6 +33,12 @@ logging.basicConfig(level=logging.INFO,
                                             )
                         ]
                     )
+
+# Define constants for AppBar
+ABM_NEW = 0x00000000
+ABM_REMOVE = 0x00000001
+ABM_SETPOS = 0x00000003
+ABE_TOP = 1
 
 
 # Define APPBARDATA structure
@@ -55,6 +54,26 @@ class APPBARDATA(Structure):
 
 
 # --- Helper Functions ---
+# Load JSON configuration
+def load_menu_config():
+    config_path = os.path.join(application_path, "menu_config")
+    try:
+        with open(config_path, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logging.error(f"Error: The file {config_path} was not found.")
+        sys.exit(1)
+    except json.JSONDecodeError:
+        logging.error(f"Error: Failed to decode JSON from {config_path}.")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}")
+        sys.exit(1)
+
+
+menu_config = load_menu_config()
+
+
 # Get primary monitor size
 def monitor_size():
     monitors = get_monitors()
@@ -112,7 +131,6 @@ def quit_app(icon, app, monitor, monitor_thread):
 # Function to open the app.log file
 def open_log_file():
     log_file = application_path + "/app.log"
-    print(log_file)
     if os.path.exists(log_file):
         os.startfile(log_file)
 
@@ -172,7 +190,10 @@ class WindowStateMonitor:
                     if current_state == "normal":
                         if window.top <= 39 and window.title != 'DFIR Toolbar' and window.right >= 0:
                             new_position = (window.left, 40)
-                            window.moveTo(*new_position)
+                            try:
+                                window.moveTo(*new_position)
+                            except Exception as e:
+                                logging.error(f"Unable to move {window.title}: {e}")
 
             time.sleep(self.polling_interval)
 
@@ -219,23 +240,33 @@ class ToolbarWithMenus(tk.Tk):
             self.toolbar_canvas.create_image(0, 0, anchor=tk.NW,
                                              image=self.background_image)
 
-        for menu_label, menu_conf in menu_config.MENU_CONFIG.items():
+        for menu_label, menu_conf in menu_config["MENU_CONFIG"].items():
             self.create_menu_button(self.toolbar_canvas, menu_label, menu_conf)
 
         self.update_position(hwnd)
 
     def load_plugins(self):
         """Dynamically loads plugins from the plugins directory."""
-        plugins_dir = "plugins"
+        plugins_dir = os.path.join(application_path, "plugins")
         if not os.path.exists(plugins_dir):
             os.makedirs(plugins_dir)
 
         for filename in os.listdir(plugins_dir):
             if filename.endswith(".py") and filename != "__init__.py":
-                module_name = f"{plugins_dir}.{filename[:-3]}"
-                module = importlib.import_module(module_name)
-                self.plugins[module_name] = module
-                logging.info(f"Loaded plugin: {module_name}, Author: {module.__author__}, Version: {module.__version__}")
+                plugin_path = os.path.join(plugins_dir, filename)
+                module_name = filename[:-3]
+                try:
+                    spec = importlib.util.spec_from_file_location(module_name, plugin_path)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    self.plugins[module_name] = module
+
+                    # Log the plugin details if the attributes exist
+                    author = getattr(module, "__author__", "Unknown")
+                    version = getattr(module, "__version__", "Unknown")
+                    logging.info(f"Loaded plugin: {module_name}, Author: {author}, Version: {version}")
+                except Exception as e:
+                    logging.error(f"Failed to load plugin {module_name}: {e}")
 
     def create_menu_button(self, parent, label, menu_items):
         """Creates a button with a popup menu."""
@@ -273,9 +304,9 @@ class ToolbarWithMenus(tk.Tk):
             return None
         if image_path not in self.image_cache:
             try:
-                self.image_cache[image_path] = tk.PhotoImage(file=image_path)
+                self.image_cache[image_path] = tk.PhotoImage(file=os.path.join(application_path, image_path))
             except Exception as e:
-                logging.error(f"Failed to load image '{image_path}': {e}")
+                logging.error(f"Failed to load image '{os.path.join(application_path, image_path)}': {e}")
                 self.image_cache[image_path] = None
         return self.image_cache[image_path]
 
@@ -322,6 +353,7 @@ class ToolbarWithMenus(tk.Tk):
 
 # --- Entry Point ---
 if __name__ == "__main__":
+    logging.info(f'DFIR_Toolbar v{__version__}')
     display = monitor_size()
     app = ToolbarWithMenus()
 
