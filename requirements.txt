@@ -1,0 +1,4 @@
+PyGetWindow
+screeninfo
+pystray
+pillow
