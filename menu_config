@@ -127,6 +127,11 @@
                             "image_path": "icons/web/lol_sites/lolad-logo.png"
                         },
                         {
+                            "label": " LOTTunnels",
+                            "command": "open_link(https://lottunnels.github.io/)",
+                            "image_path": "icons/web/lol_sites/lotts-logo.png"
+                        },
+                        {
                             "label": " LOLCloud",
                             "command": "open_link(https://beercow.github.io/LOLCloud-Project.github.io/index.html)",
                             "image_path": "icons/web/lol_sites/lolcloud-logo.png"
@@ -155,6 +160,11 @@
                             "label": " ATLAS",
                             "command": "open_link(https://atlas.mitre.org/matrices/ATLAS)",
                             "image_path": "icons/web/frameworks/atlas.png"
+                        },
+                        {
+                            "label": " SPARTA",
+                            "command": "open_link(https://sparta.aerospace.org/)",
+                            "image_path": "icons/web/frameworks/sparta.png"
                         },
                         {
                             "label": " Unprotect Project",
@@ -357,7 +367,7 @@
                     ]
                 },
                 {
-                    "label": "Sigma",
+                    "label": " Sigma",
                     "image_path": "icons/web/sigma_logo_dark.png",
                     "submenu": [
                         {
@@ -369,6 +379,25 @@
                             "label": " UNCODER.io",
                             "command": "open_link(https://uncoder.io/)",
                             "image_path": "icons/web/sigma/uncoder-logo.png"
+                        }
+                    ]
+                },
+                {
+                    "label": " CyberChef",
+                    "image_path": "icons/web/cyberchef/cyberchef_hat.png",
+                    "submenu": [
+                        {
+                            "label": " CyberChef",
+                            "command": "open_link(https://gchq.github.io/CyberChef/)",
+                            "image_path": "icons/web/cyberchef/cyberchef_hat.png"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "label": " CyberChef-Recipes",
+                            "command": "open_link(https://github.com/mattnotmax/cyberchef-recipes)",
+                            "image_path": "icons/web/lol_sites/lolol/github.png"
                         }
                     ]
                 },
@@ -389,7 +418,7 @@
                     ]
                 },
                 {
-                    "label": "Start.me DFIR Pages",
+                    "label": " Start.me DFIR Pages",
                     "image_path": "icons/web/startme-logo.png",
                     "submenu": [
                         {
@@ -448,24 +477,66 @@
                     ]
                 },
                 {
-                    "label": "M$ Portals",
+                    "label": " M$/Azure",
                     "tearoff": "True",
                     "image_path": "icons/web/ms-logo.png",
                     "submenu": [
                         {
                             "label": " MSPortals.io",
                             "command": "open_link(https://msportals.io/)",
-                            "image_path": "icons/web/ms_portals/O365_Admin_Green.png"
+                            "image_path": "icons/web/ms_azure/O365_Admin_Green.png"
                         },
                         {
                             "label": " cmd.ms",
                             "command": "open_link(https://cmd.ms)",
-                            "image_path": "icons/web/ms_portals/cmdms-logo.png"
+                            "image_path": "icons/web/ms_azure/cmdms-logo.png"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "label": " Graph Permissions Explorer",
+                            "command": "open_link(https://graphpermissions.merill.net/permission/)",
+                            "image_path": "icons/web/ms_azure/merrill.png"
+                        },
+                        {
+                            "label": " Microsoft First Party App Names & Graph Permissions",
+                            "command": "open_link(aka.ms/AppNames)",
+                            "image_path": "icons/web/lol_sites/lolol/github.png"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "label": " Attack Surface Reduction Generator",
+                            "command": "open_link(https://asrgen.streamlit.app/)",
+                            "image_path": "icons/web/ms_azure/asrgen-logo.png"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "label": " KQL Search",
+                            "command": "open_link(https://www.kqlsearch.com/)",
+                            "image_path": "icons/web/ms_azure/kqlsearch-logo.png"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "label": " SDDLMaker",
+                            "command": "open_link(https://thesddlmaker.streamlit.app/)",
+                            "image_path": "icons/web/ms_azure/SDDLMaker.png"
                         }
                     ]
                 },
                 {
                     "type": "separator"
+                },
+                {
+                    "label": " EDR Telemetry",
+                    "command": "open_link(https://www.edr-telemetry.com/)",
+                    "image_path": ""
                 },
                 {
                     "label": " AttackRuleMap",
@@ -483,14 +554,8 @@
                     "image_path": "icons/web/stronticy.png"
                 },
                 {
-                    "label": " KQL Search",
-                    "command": "open_link(https://www.kqlsearch.com/)",
-                    "image_path": "icons/web/kqlsearch-logo.png"
-                },
-                {
-                    "label": " CyberChef",
-                    "command": "open_link(https://gchq.github.io/CyberChef/)",
-                    "image_path": "icons/web/cyberchef_hat.png"
+                    "label": " 3rpg",
+                    "command": "open_link(https://hexacorn.com/tools/3rpg.html)"
                 },
                 {
                     "label": " ExplainShell",
