@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import sys
+import ctypes
 from ctypes import Structure, byref, c_uint, sizeof, windll
 from ctypes.wintypes import HWND, RECT, UINT
 import tkinter as tk
@@ -16,7 +17,7 @@ from pystray import Icon, MenuItem, Menu as TrayMenu  # Alias pystray.Menu
 from screeninfo import get_monitors
 
 __author__ = "Brian Maloney"
-__version__ = "2025.01.03"
+__version__ = "2025.10.14"
 __email__ = "bmmaloney97@gmail.com"
 
 if getattr(sys, 'frozen', False):
@@ -33,6 +34,10 @@ logging.basicConfig(level=logging.INFO,
                                             )
                         ]
                     )
+
+# Windows session end messages
+WM_QUERYENDSESSION = 0x0011
+WM_ENDSESSION = 0x0016
 
 # Define constants for AppBar
 ABM_NEW = 0x00000000
@@ -97,7 +102,11 @@ def register_appbar(hwnd, height=40):
 
 def unregister_appbar(abd):
     """Unregisters the AppBar and frees reserved space."""
-    windll.shell32.SHAppBarMessage(ABM_REMOVE, byref(abd))
+    try:
+        windll.shell32.SHAppBarMessage(ABM_REMOVE, byref(abd))
+    except Exception:
+        # ignore errors during shutdown
+        pass
 
 
 # Function to create a simple icon image
@@ -122,10 +131,22 @@ def toggle_toolbar(app):
 
 # Function to quit both the tray icon and the app
 def quit_app(icon, app, monitor, monitor_thread):
-    monitor.stop()
-    monitor_thread.join()
-    app.on_close()  # Call the original cleanup method
-    icon.stop()
+    try:
+        monitor.stop()
+    except Exception:
+        pass
+    try:
+        monitor_thread.join(timeout=5)
+    except Exception:
+        pass
+    try:
+        app.on_close()
+    except Exception:
+        pass
+    try:
+        icon.stop()
+    except Exception:
+        pass
 
 
 # Function to open the app.log file
@@ -218,14 +239,30 @@ class ToolbarWithMenus(tk.Tk):
         self.plugins = {}
         self.load_plugins()  # Load plugins dynamically
 
-        hwnd = windll.user32.GetForegroundWindow()
-        self.abd = register_appbar(hwnd, height=40)
+        # use the tkinter window handle (winfo_id) instead of GetForegroundWindow
+        hwnd = HWND(self.winfo_id())
+        try:
+            self.abd = register_appbar(hwnd, height=40)
+        except Exception as e:
+            logging.error(f"Failed to register AppBar: {e}")
+            self.abd = None
+
+        # Save references for potential shutdown cleanup
+        self._old_wndproc = None
+        self._new_wndproc = None
+        self._wndproc_ref = None
+
+        # Register shutdown handler for Windows sessions
+        try:
+            self._register_shutdown_handler(hwnd)
+        except Exception as e:
+            logging.error(f"Failed to register shutdown handler: {e}")
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Load background image
         try:
-            self.background_image = tk.PhotoImage(file="icons/toolbar.png")
+            self.background_image = tk.PhotoImage(file=os.path.join(application_path, "icons/toolbar.png"))
         except Exception as e:
             logging.error(f"Error loading background image: {e}")
             self.background_image = None
@@ -244,6 +281,68 @@ class ToolbarWithMenus(tk.Tk):
             self.create_menu_button(self.toolbar_canvas, menu_label, menu_conf)
 
         self.update_position(hwnd)
+
+    def _register_shutdown_handler(self, hwnd):
+        """
+        Install a new WndProc for this window so we can intercept
+        WM_QUERYENDSESSION / WM_ENDSESSION. We store the previous
+        wndproc and forward all non-shutdown messages to it.
+        """
+        # Define WNDPROC type
+        WNDPROCTYPE = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p)
+
+        # Keep the callback alive (prevent GC)
+        self._new_wndproc = WNDPROCTYPE(self._window_proc)
+        self._wndproc_ref = self._new_wndproc
+
+        # GWL_WNDPROC = -4
+        GWL_WNDPROC = -4
+
+        # Get previous proc and set ours
+        prev = windll.user32.SetWindowLongPtrW(hwnd, GWL_WNDPROC, ctypes.cast(self._new_wndproc, ctypes.c_void_p).value)
+        self._old_wndproc = prev
+
+    def _window_proc(self, hwnd, msg, wparam, lparam):
+        """
+        Custom window procedure. If system is ending session, attempt clean shutdown.
+        """
+        try:
+            if msg in (WM_QUERYENDSESSION, WM_ENDSESSION):
+                logging.info("System is shutting down — cleaning up DFIR Toolbar.")
+                try:
+                    # Attempt to stop monitor and threads if present in globals
+                    if 'monitor' in globals() and monitor is not None:
+                        try:
+                            monitor.stop()
+                        except Exception:
+                            pass
+                    if 'monitor_thread' in globals() and monitor_thread is not None:
+                        try:
+                            monitor_thread.join(timeout=5)
+                        except Exception:
+                            pass
+                    # Attempt to unregister appbar + destroy
+                    try:
+                        self.on_close()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logging.error(f"Error during shutdown cleanup: {e}")
+                # Return 0 to indicate we've handled it
+                return 0
+        except Exception:
+            # swallow any errors here to avoid preventing system shutdown
+            pass
+
+        # Forward to previous wndproc if available
+        try:
+            if self._old_wndproc:
+                return windll.user32.CallWindowProcW(self._old_wndproc, hwnd, msg, wparam, lparam)
+        except Exception:
+            pass
+
+        # Default fallback
+        return windll.user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def load_plugins(self):
         """Dynamically loads plugins from the plugins directory."""
@@ -324,17 +423,62 @@ class ToolbarWithMenus(tk.Tk):
     def update_position(self, hwnd):
         """Prevents apps from covering the toolbar."""
         def adjust_position():
-            windll.user32.SetWindowPos(
-                hwnd, -1, 0, 0, display.width, 40, 0x0001 | 0x0002
-            )
+            try:
+                windll.user32.SetWindowPos(
+                    hwnd, -1, 0, 0, display.width, 40, 0x0001 | 0x0002
+                )
+            except Exception:
+                pass
             self.after(100, adjust_position)
 
         adjust_position()
 
     def on_close(self):
-        self.image_cache.clear()  # Clear cached images
-        unregister_appbar(self.abd)
-        self.destroy()
+        """
+        Clean shutdown for the toolbar. Attempts to stop monitor threads and
+        unregister the AppBar, then destroys the Tk window.
+        """
+        # Stop the monitor if present in globals
+        try:
+            if 'monitor' in globals() and monitor is not None:
+                try:
+                    monitor.stop()
+                except Exception:
+                    pass
+            if 'monitor_thread' in globals() and monitor_thread is not None:
+                try:
+                    monitor_thread.join(timeout=5)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Clear image cache
+        try:
+            self.image_cache.clear()
+        except Exception:
+            pass
+
+        # Unregister the appbar
+        try:
+            if getattr(self, "abd", None) is not None:
+                unregister_appbar(self.abd)
+        except Exception:
+            pass
+
+        # Restore old wndproc if possible (best-effort, ignore errors)
+        try:
+            if getattr(self, "_old_wndproc", None):
+                GWL_WNDPROC = -4
+                windll.user32.SetWindowLongPtrW(HWND(self.winfo_id()), GWL_WNDPROC, self._old_wndproc)
+        except Exception:
+            pass
+
+        try:
+            # Finally destroy the window
+            self.destroy()
+        except Exception:
+            pass
 
     def get_plugin_command(self, command_name):
         """Retrieves a command from loaded plugins, supporting parameterized commands."""
@@ -365,9 +509,18 @@ if __name__ == "__main__":
 
     # Ensure the monitor stops when the app is closed
     def on_close_with_monitor():
-        monitor.stop()  # Stop the monitor
-        monitor_thread.join()  # Wait for the thread to finish
-        app.on_close()  # Call the original cleanup method
+        try:
+            monitor.stop()  # Stop the monitor
+        except Exception:
+            pass
+        try:
+            monitor_thread.join()  # Wait for the thread to finish
+        except Exception:
+            pass
+        try:
+            app.on_close()  # Call the original cleanup method
+        except Exception:
+            pass
 
     # Run the tray icon in a separate thread to avoid blocking
     tray_thread = threading.Thread(target=run_tray_icon, args=(app, monitor, monitor_thread), daemon=True)
